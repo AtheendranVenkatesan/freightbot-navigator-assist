@@ -1,8 +1,9 @@
-
 import React, { useState, useEffect } from 'react';
-import { Mic, MicOff, Truck, MapPin, FileText, Fuel, AlertTriangle, Phone } from 'lucide-react';
+import { Mic, MicOff, Truck, MapPin, FileText, Fuel, AlertTriangle, Phone, LogOut, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/hooks/use-toast';
 import VoiceAssistant from '@/components/VoiceAssistant';
 import LoadBooking from '@/components/LoadBooking';
 import NavigationPanel from '@/components/NavigationPanel';
@@ -14,6 +15,8 @@ const Index = () => {
   const [isListening, setIsListening] = useState(false);
   const [activePanel, setActivePanel] = useState('dashboard');
   const [greeting, setGreeting] = useState('');
+  const { user, signOut } = useAuth();
+  const { toast } = useToast();
 
   useEffect(() => {
     const hour = new Date().getHours();
@@ -21,6 +24,22 @@ const Index = () => {
     else if (hour < 18) setGreeting('Good afternoon');
     else setGreeting('Good evening');
   }, []);
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      toast({
+        title: "Signed out successfully",
+        description: "Stay safe on the road!",
+      });
+    } catch (error) {
+      toast({
+        title: "Error signing out",
+        description: "Please try again",
+        variant: "destructive",
+      });
+    }
+  };
 
   const navigationItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Truck },
@@ -51,7 +70,7 @@ const Index = () => {
                 <Truck className="w-12 h-12 text-white" />
               </div>
               <h2 className="text-3xl font-bold text-gray-900">
-                {greeting}, Driver!
+                {greeting}, {user?.email?.split('@')[0] || 'Driver'}!
               </h2>
               <p className="text-lg text-gray-600">
                 FreightBot is ready to assist you. Try saying "Show me loads" or "Check fuel status"
@@ -120,6 +139,11 @@ const Index = () => {
             </div>
 
             <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2 text-sm text-gray-600">
+                <User className="w-4 h-4" />
+                <span>{user?.email}</span>
+              </div>
+              
               <Button
                 variant={isListening ? "destructive" : "default"}
                 size="lg"
@@ -137,6 +161,15 @@ const Index = () => {
                     <span>Start Voice</span>
                   </>
                 )}
+              </Button>
+
+              <Button
+                variant="outline"
+                onClick={handleSignOut}
+                className="flex items-center space-x-2"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>Sign Out</span>
               </Button>
             </div>
           </div>
