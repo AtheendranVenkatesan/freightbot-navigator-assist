@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, Volume2, AlertCircle } from 'lucide-react';
+import { Mic, Volume2, AlertCircle, Fuel } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
@@ -10,12 +10,13 @@ interface VoiceAssistantProps {
   onPanelChange: (panel: string) => void;
 }
 
-// Intent patterns for flexible voice recognition
+// Enhanced intent patterns for flexible voice recognition
 const INTENT_PATTERNS = {
   'loads': [
     'show loads', 'available loads', 'find loads', 'book loads', 'load options',
     'any loads', 'loads near', 'haul', 'freight', 'cargo', 'shipment',
-    'what loads', 'see loads', 'load board', 'loads available'
+    'what loads', 'see loads', 'load board', 'loads available', 'got loads',
+    'show me loads', 'find me loads', 'available freight', 'any freight'
   ],
   'navigation': [
     'navigation', 'navigate', 'directions', 'route', 'where to go',
@@ -35,7 +36,22 @@ const INTENT_PATTERNS = {
   ],
   'dashboard': [
     'home', 'dashboard', 'main menu', 'back', 'main screen', 'overview'
+  ],
+  'fuel_check': [
+    'fuel level', 'how much fuel', 'fuel status', 'gas level', 'fuel remaining'
+  ],
+  'weather_check': [
+    'weather conditions', 'current weather', 'weather report', 'temperature'
   ]
+};
+
+// Simulate driver data
+const DRIVER_STATUS = {
+  fuelLevel: 25, // percentage
+  currentLocation: 'Dallas, TX',
+  hoursRemaining: 8.5,
+  nextStop: 'Houston, TX',
+  weatherAlert: 'Heavy rain expected in 2 hours'
 };
 
 // Calculate similarity score between two strings
@@ -96,6 +112,7 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
   const [isSupported, setIsSupported] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [lastIntent, setLastIntent] = useState('');
+  const [alertsEnabled, setAlertsEnabled] = useState(true);
   const recognitionRef = useRef<any>(null);
   const synthRef = useRef<SpeechSynthesis | null>(null);
 
@@ -143,12 +160,20 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
       synthRef.current = window.speechSynthesis;
     }
 
+    // Set up periodic alerts
+    const alertInterval = setInterval(() => {
+      if (alertsEnabled) {
+        checkAndAnnounceAlerts();
+      }
+    }, 60000); // Check every minute
+
     return () => {
       if (recognitionRef.current) {
         recognitionRef.current.stop();
       }
+      clearInterval(alertInterval);
     };
-  }, []);
+  }, [alertsEnabled]);
 
   useEffect(() => {
     if (isListening && recognitionRef.current && isSupported) {
@@ -159,6 +184,32 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
       setIsProcessing(false);
     }
   }, [isListening, isSupported]);
+
+  const checkAndAnnounceAlerts = () => {
+    const alerts = [];
+    
+    // Fuel alerts
+    if (DRIVER_STATUS.fuelLevel <= 25) {
+      alerts.push(`Fuel alert: You have ${DRIVER_STATUS.fuelLevel}% fuel remaining. Consider refueling soon.`);
+    }
+    
+    // Hours of service alerts
+    if (DRIVER_STATUS.hoursRemaining <= 2) {
+      alerts.push(`Hours of service alert: You have ${DRIVER_STATUS.hoursRemaining} hours remaining. Plan your rest break.`);
+    }
+    
+    // Weather alerts
+    if (DRIVER_STATUS.weatherAlert) {
+      alerts.push(`Weather alert: ${DRIVER_STATUS.weatherAlert}`);
+    }
+    
+    // Announce random alert (simulate real-time alerts)
+    if (alerts.length > 0 && Math.random() < 0.3) {
+      const randomAlert = alerts[Math.floor(Math.random() * alerts.length)];
+      speak(randomAlert);
+      setResponse(randomAlert);
+    }
+  };
 
   const processVoiceCommand = async (command: string) => {
     console.log('Processing voice command:', command);
@@ -175,7 +226,7 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
     if (confidence > 0.3) {
       switch (intent) {
         case 'loads':
-          botResponse = 'Opening load booking panel. I can help you find and book loads.';
+          botResponse = `Opening load booking panel. I found 8 available loads in your area. The highest paying load is from Dallas to Houston at $1,250.`;
           targetPanel = 'loads';
           break;
         case 'navigation':
@@ -183,15 +234,21 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
           targetPanel = 'navigation';
           break;
         case 'documents':
-          botResponse = 'Opening document scanner. You can upload bills of lading and receipts.';
+          botResponse = 'Opening document scanner. You can upload bills of lading and receipts here.';
           targetPanel = 'documents';
           break;
         case 'fuel-weather':
-          botResponse = 'Opening fuel and weather panel. Checking current conditions.';
+          botResponse = `Opening fuel and weather panel. Current fuel level is ${DRIVER_STATUS.fuelLevel}%. Weather conditions: ${DRIVER_STATUS.weatherAlert}`;
           targetPanel = 'fuel-weather';
           break;
+        case 'fuel_check':
+          botResponse = `Your current fuel level is ${DRIVER_STATUS.fuelLevel}%. ${DRIVER_STATUS.fuelLevel <= 25 ? 'You should refuel soon. The nearest truck stop is 15 miles ahead.' : 'Fuel level is good for your next destination.'}`;
+          break;
+        case 'weather_check':
+          botResponse = `Current weather conditions: ${DRIVER_STATUS.weatherAlert}. Drive safely and adjust your speed accordingly.`;
+          break;
         case 'emergency':
-          botResponse = 'Opening emergency panel. Stay calm, help is available.';
+          botResponse = 'Opening emergency panel. Stay calm, help is available. I can connect you to roadside assistance or emergency services.';
           targetPanel = 'emergency';
           break;
         case 'dashboard':
@@ -199,15 +256,15 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
           targetPanel = 'dashboard';
           break;
         default:
-          botResponse = 'I\'m ready to help! Try saying "show loads", "check weather", "scan document", or "emergency help".';
+          botResponse = 'I\'m ready to help you drive safely! Try saying "show loads", "check fuel level", "weather update", or "emergency help".';
       }
     } else {
       // Fallback for low confidence or greetings
       const lowerCommand = command.toLowerCase();
       if (lowerCommand.includes('hello') || lowerCommand.includes('hi') || lowerCommand.includes('hey')) {
-        botResponse = 'Hello! I\'m FreightBot, your voice assistant. I can help you with loads, navigation, documents, fuel, weather, and emergency assistance. What do you need?';
+        botResponse = `Hello! I'm FreightBot, your voice assistant. Currently you're in ${DRIVER_STATUS.currentLocation} with ${DRIVER_STATUS.fuelLevel}% fuel. I can help you with loads, navigation, fuel status, weather alerts, and emergency assistance. What do you need?`;
       } else {
-        botResponse = 'I didn\'t quite understand that. Try saying "show loads", "check weather", "scan document", or "emergency help".';
+        botResponse = 'I didn\'t quite understand that. Try saying "show loads", "check fuel level", "weather update", or "emergency help".';
       }
     }
 
@@ -250,7 +307,13 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
   };
 
   const testSpeak = () => {
-    speak('FreightBot voice assistant is working perfectly. I\'m ready to help you with your trucking needs.');
+    speak(`FreightBot voice assistant is working perfectly. You currently have ${DRIVER_STATUS.fuelLevel}% fuel remaining. I'm ready to help you with your trucking needs.`);
+  };
+
+  const announceFuelStatus = () => {
+    const fuelMessage = `Current fuel level is ${DRIVER_STATUS.fuelLevel}%. ${DRIVER_STATUS.fuelLevel <= 25 ? 'Fuel is running low. I recommend refueling at the next truck stop.' : 'Fuel level is adequate for your journey.'}`;
+    speak(fuelMessage);
+    setResponse(fuelMessage);
   };
 
   if (!isSupported) {
@@ -278,10 +341,30 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
               <Mic className="w-4 h-4 mr-2" />
               FreightBot
             </h3>
-            <Button size="sm" variant="outline" onClick={testSpeak}>
-              <Volume2 className="w-4 h-4 mr-1" />
-              Test Voice
-            </Button>
+            <div className="flex space-x-1">
+              <Button size="sm" variant="outline" onClick={announceFuelStatus}>
+                <Fuel className="w-4 h-4 mr-1" />
+                Fuel
+              </Button>
+              <Button size="sm" variant="outline" onClick={testSpeak}>
+                <Volume2 className="w-4 h-4 mr-1" />
+                Test
+              </Button>
+            </div>
+          </div>
+
+          {/* Current Status */}
+          <div className="bg-gray-50 p-2 rounded text-xs">
+            <div className="flex justify-between">
+              <span>Fuel: {DRIVER_STATUS.fuelLevel}%</span>
+              <span className={DRIVER_STATUS.fuelLevel <= 25 ? 'text-red-600 font-semibold' : 'text-green-600'}>
+                {DRIVER_STATUS.fuelLevel <= 25 ? 'LOW' : 'OK'}
+              </span>
+            </div>
+            <div className="flex justify-between mt-1">
+              <span>Hours: {DRIVER_STATUS.hoursRemaining}h</span>
+              <span>Location: {DRIVER_STATUS.currentLocation}</span>
+            </div>
           </div>
 
           {isListening && (
@@ -323,10 +406,10 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
 
           <div className="text-xs text-gray-500 mt-2">
             <p><strong>Try saying:</strong></p>
-            <p>"Show available loads near me"</p>
-            <p>"Any loads to haul?"</p>
-            <p>"Check the weather"</p>
-            <p>"Scan my documents"</p>
+            <p>"Show available loads"</p>
+            <p>"Check my fuel level"</p>
+            <p>"Weather conditions"</p>
+            <p>"Emergency help"</p>
           </div>
         </div>
       </CardContent>
