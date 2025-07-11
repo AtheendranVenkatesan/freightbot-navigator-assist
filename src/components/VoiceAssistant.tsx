@@ -10,6 +10,82 @@ interface VoiceAssistantProps {
   onPanelChange: (panel: string) => void;
 }
 
+// Intent patterns for flexible voice recognition
+const INTENT_PATTERNS = {
+  'loads': [
+    'show loads', 'available loads', 'find loads', 'book loads', 'load options',
+    'any loads', 'loads near', 'haul', 'freight', 'cargo', 'shipment',
+    'what loads', 'see loads', 'load board', 'loads available'
+  ],
+  'navigation': [
+    'navigation', 'navigate', 'directions', 'route', 'where to go',
+    'GPS', 'map', 'drive to', 'how to get', 'directions to'
+  ],
+  'documents': [
+    'document', 'scan', 'upload', 'picture', 'photo', 'bill of lading',
+    'receipt', 'paperwork', 'BOL', 'delivery receipt', 'proof of delivery'
+  ],
+  'fuel-weather': [
+    'fuel', 'gas', 'weather', 'rain', 'snow', 'temperature',
+    'fuel stop', 'gas station', 'weather update', 'forecast'
+  ],
+  'emergency': [
+    'emergency', 'help', 'SOS', 'urgent', 'trouble', 'breakdown',
+    'accident', 'medical', 'police', 'fire', 'ambulance'
+  ],
+  'dashboard': [
+    'home', 'dashboard', 'main menu', 'back', 'main screen', 'overview'
+  ]
+};
+
+// Calculate similarity score between two strings
+const calculateSimilarity = (str1: string, str2: string): number => {
+  const words1 = str1.toLowerCase().split(/\s+/);
+  const words2 = str2.toLowerCase().split(/\s+/);
+  
+  let matches = 0;
+  for (const word1 of words1) {
+    for (const word2 of words2) {
+      if (word1.includes(word2) || word2.includes(word1)) {
+        matches++;
+      }
+    }
+  }
+  
+  return matches / Math.max(words1.length, words2.length);
+};
+
+// Advanced intent matching function
+const matchIntent = (transcript: string): { intent: string; confidence: number } => {
+  let bestMatch = '';
+  let bestScore = 0;
+  
+  for (const [intent, patterns] of Object.entries(INTENT_PATTERNS)) {
+    for (const pattern of patterns) {
+      const score = calculateSimilarity(transcript, pattern);
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = intent;
+      }
+    }
+  }
+  
+  // Also check for direct word matches in transcript
+  const lowerTranscript = transcript.toLowerCase();
+  for (const [intent, patterns] of Object.entries(INTENT_PATTERNS)) {
+    for (const pattern of patterns) {
+      if (lowerTranscript.includes(pattern.toLowerCase())) {
+        if (0.8 > bestScore) {
+          bestScore = 0.8;
+          bestMatch = intent;
+        }
+      }
+    }
+  }
+  
+  return { intent: bestMatch, confidence: bestScore };
+};
+
 const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
   isListening,
   onListeningChange,
@@ -19,6 +95,7 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
   const [response, setResponse] = useState('');
   const [isSupported, setIsSupported] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [lastIntent, setLastIntent] = useState('');
   const recognitionRef = useRef<any>(null);
   const synthRef = useRef<SpeechSynthesis | null>(null);
 
@@ -53,7 +130,6 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
       recognitionRef.current.onend = () => {
         setIsProcessing(false);
         if (isListening) {
-          // Restart recognition if it should still be listening
           setTimeout(() => {
             recognitionRef.current?.start();
           }, 100);
@@ -63,7 +139,6 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
       setIsSupported(false);
     }
 
-    // Initialize speech synthesis
     if ('speechSynthesis' in window) {
       synthRef.current = window.speechSynthesis;
     }
@@ -86,33 +161,54 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
   }, [isListening, isSupported]);
 
   const processVoiceCommand = async (command: string) => {
-    const lowerCommand = command.toLowerCase();
+    console.log('Processing voice command:', command);
+    
+    // Use advanced intent matching
+    const { intent, confidence } = matchIntent(command);
+    console.log('Matched intent:', intent, 'confidence:', confidence);
+    
+    setLastIntent(intent);
     let botResponse = '';
     let targetPanel = '';
 
-    // Intent matching logic
-    if (lowerCommand.includes('load') && (lowerCommand.includes('show') || lowerCommand.includes('find') || lowerCommand.includes('book'))) {
-      botResponse = 'Opening load booking panel. I can help you find and book loads.';
-      targetPanel = 'loads';
-    } else if (lowerCommand.includes('navigation') || lowerCommand.includes('route') || lowerCommand.includes('direction')) {
-      botResponse = 'Opening navigation panel. Where would you like to go?';
-      targetPanel = 'navigation';
-    } else if (lowerCommand.includes('document') || lowerCommand.includes('scan') || lowerCommand.includes('upload')) {
-      botResponse = 'Opening document scanner. You can upload bills of lading and receipts.';
-      targetPanel = 'documents';
-    } else if (lowerCommand.includes('fuel') || lowerCommand.includes('weather') || lowerCommand.includes('gas')) {
-      botResponse = 'Opening fuel and weather panel. Checking current conditions.';
-      targetPanel = 'fuel-weather';
-    } else if (lowerCommand.includes('emergency') || lowerCommand.includes('help') || lowerCommand.includes('sos')) {
-      botResponse = 'Opening emergency panel. Stay calm, help is available.';
-      targetPanel = 'emergency';
-    } else if (lowerCommand.includes('hello') || lowerCommand.includes('hi') || lowerCommand.includes('hey')) {
-      botResponse = 'Hello! I\'m FreightBot, your voice assistant. I can help you with loads, navigation, documents, fuel, weather, and emergency assistance. What do you need?';
-    } else if (lowerCommand.includes('dashboard') || lowerCommand.includes('home') || lowerCommand.includes('main')) {
-      botResponse = 'Going back to the main dashboard.';
-      targetPanel = 'dashboard';
+    // Handle intents with confidence threshold
+    if (confidence > 0.3) {
+      switch (intent) {
+        case 'loads':
+          botResponse = 'Opening load booking panel. I can help you find and book loads.';
+          targetPanel = 'loads';
+          break;
+        case 'navigation':
+          botResponse = 'Opening navigation panel. Where would you like to go?';
+          targetPanel = 'navigation';
+          break;
+        case 'documents':
+          botResponse = 'Opening document scanner. You can upload bills of lading and receipts.';
+          targetPanel = 'documents';
+          break;
+        case 'fuel-weather':
+          botResponse = 'Opening fuel and weather panel. Checking current conditions.';
+          targetPanel = 'fuel-weather';
+          break;
+        case 'emergency':
+          botResponse = 'Opening emergency panel. Stay calm, help is available.';
+          targetPanel = 'emergency';
+          break;
+        case 'dashboard':
+          botResponse = 'Going back to the main dashboard.';
+          targetPanel = 'dashboard';
+          break;
+        default:
+          botResponse = 'I\'m ready to help! Try saying "show loads", "check weather", "scan document", or "emergency help".';
+      }
     } else {
-      botResponse = 'I didn\'t quite understand that. Try saying "show loads", "check weather", "scan document", or "emergency help".';
+      // Fallback for low confidence or greetings
+      const lowerCommand = command.toLowerCase();
+      if (lowerCommand.includes('hello') || lowerCommand.includes('hi') || lowerCommand.includes('hey')) {
+        botResponse = 'Hello! I\'m FreightBot, your voice assistant. I can help you with loads, navigation, documents, fuel, weather, and emergency assistance. What do you need?';
+      } else {
+        botResponse = 'I didn\'t quite understand that. Try saying "show loads", "check weather", "scan document", or "emergency help".';
+      }
     }
 
     setResponse(botResponse);
@@ -132,7 +228,6 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
 
   const speak = (text: string) => {
     if (synthRef.current) {
-      // Cancel any ongoing speech
       synthRef.current.cancel();
       
       const utterance = new SpeechSynthesisUtterance(text);
@@ -140,7 +235,6 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
       utterance.pitch = 1;
       utterance.volume = 0.8;
       
-      // Try to use a more natural voice
       const voices = synthRef.current.getVoices();
       const preferredVoice = voices.find(voice => 
         voice.name.includes('Google') || 
@@ -202,6 +296,11 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
               <p className="text-sm text-gray-700">
                 <strong>You said:</strong> "{transcript}"
               </p>
+              {lastIntent && (
+                <p className="text-xs text-blue-600 mt-1">
+                  <strong>Detected:</strong> {lastIntent}
+                </p>
+              )}
             </div>
           )}
 
@@ -221,6 +320,14 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
               </div>
             </div>
           )}
+
+          <div className="text-xs text-gray-500 mt-2">
+            <p><strong>Try saying:</strong></p>
+            <p>"Show available loads near me"</p>
+            <p>"Any loads to haul?"</p>
+            <p>"Check the weather"</p>
+            <p>"Scan my documents"</p>
+          </div>
         </div>
       </CardContent>
     </Card>
